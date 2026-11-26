@@ -133,6 +133,42 @@ SELECT pg_temp.expect('不能訂閱草稿詞庫包',
   $$INSERT INTO packs (pack_id, name, owner_id) VALUES (901, '台灣地名', 901);
     INSERT INTO subscriptions VALUES (903, 901)$$, '23514');
 
+DO $$ BEGIN RAISE NOTICE '— 停權的編輯'; END $$;
+INSERT INTO releases (release_id, version, created_by) VALUES (903, '11.0', 901);
+SELECT pg_temp.expect('編輯 B 在草稿裡新增詞條、調詞頻，並建立詞庫包',
+  $$SELECT add_entry('夜市', 'ㄧㄝˋ ㄕˋ', 100, 902);
+    SELECT change_entry(901, 902, (SELECT row_version FROM lexicon_entries WHERE entry_id = 901), 'reweight', 200);
+    INSERT INTO packs (pack_id, name, owner_id) VALUES (902, '夜市小吃', 902)$$);
+UPDATE users SET status = 'suspended' WHERE user_id = 902;
+SELECT pg_temp.expect('停權的編輯不能再改自己改過的詞條',
+  $$SELECT change_entry(901, 902, (SELECT row_version FROM lexicon_entries WHERE entry_id = 901), 'reweight', 250)$$, '23514');
+SELECT pg_temp.expect('停權的編輯不能建立詞庫包',
+  $$INSERT INTO packs (name, owner_id) VALUES ('飲料', 902)$$, '23514');
+SELECT pg_temp.expect('詞庫包不能改給一般使用者',
+  $$UPDATE packs SET owner_id = 903 WHERE pack_id = 902$$, '23514');
+SELECT pg_temp.expect('建立者停權後，詞庫包仍可上架、下架',
+  $$UPDATE packs SET status = 'published' WHERE pack_id = 902;
+    UPDATE packs SET status = 'archived' WHERE pack_id = 902$$);
+SELECT pg_temp.expect('改過詞條的編輯停權後，草稿版本仍可發布',
+  $t$DO $$ BEGIN
+      PERFORM publish_release(901);
+      ASSERT (SELECT status FROM lexicon_entries e JOIN words USING (word_id) WHERE text = '夜市') = 'active';
+      ASSERT (SELECT frequency FROM lexicon_entries WHERE entry_id = 901) = 200;
+    END $$$t$);
+
+DO $$ BEGIN RAISE NOTICE '— 漢字範圍（R4）'; END $$;
+SELECT pg_temp.expect('韓文不是漢字',
+  $$INSERT INTO words (text) VALUES (U&'\D55C\AE00')$$, '23514');
+SELECT pg_temp.expect('私用區字元不是漢字',
+  $$INSERT INTO words (text) VALUES (U&'\E000')$$, '23514');
+SELECT pg_temp.expect('相容區與擴充 B 的漢字可以收',
+  $$INSERT INTO words (text) VALUES (U&'\F900'), (U&'\+020000')$$);
+SELECT pg_temp.expect('上傳時略過韓文',
+  $t$DO $$ BEGIN
+      ASSERT (upload_words('22222222-2222-2222-2222-222222222222', 'macos', '8.0',
+        jsonb_build_array(jsonb_build_object('text', U&'\D55C\AE00', 'typed', 'ㄅ', 'count', 1)))->>'accepted')::int = 0;
+    END $$$t$);
+
 DO $$
 DECLARE n integer := (SELECT count(*) FROM failures);
 BEGIN

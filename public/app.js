@@ -1,5 +1,5 @@
 // 輕注音詞庫：單頁網頁。所有資料都透過 /api 取得，登入後依角色顯示不同功能。
-// 畫面：① 查詢詞庫 ② 待審新詞 ③ 我的 ④ 審核台 ⑤ 版本 ⑥ 回報處理 ⑦ 分析
+// 畫面：① 查詢詞庫 ② 待審新詞 ③ 我的 ④ 審核台 ⑤ 版本 ⑥ 回報處理 ⑦ 分析 ⑧ 管理
 
 // ==================== 小工具 ====================
 
@@ -67,6 +67,7 @@ const PAGES = [
   { path: 'releases', name: '版本', view: releasesView, editor: true },
   { path: 'reports', name: '回報處理', view: reportsView, editor: true },
   { path: 'analytics', name: '分析', view: analyticsView, editor: true },
+  { path: 'admin', name: '管理', view: adminView, editor: true },
 ];
 
 function renderChrome(current) {
@@ -390,7 +391,7 @@ async function releasesView(root) {
 // ==================== ③ 我的 ====================
 
 function meView(root) {
-  const tabs = { devices: '我的裝置', reports: '我的回報', words: '個人詞', packs: '詞庫包' };
+  const tabs = { devices: '我的裝置', share: '分享新詞', reports: '我的回報', words: '個人詞', packs: '詞庫包', account: '帳號' };
   let tab = 'devices';
   const bar = h('div', { class: 'tabs' });
   const body = h('div', { class: 'panel stack' });
@@ -400,7 +401,7 @@ function meView(root) {
   const draw = () => {
     bar.replaceChildren(...Object.entries(tabs).map(([k, v]) =>
       h('button', { class: k === tab ? 'on' : '', onclick: () => { tab = k; draw(); } }, v)));
-    ({ devices, reports, words, packs })[tab]();
+    ({ devices, share, reports, words, packs, account })[tab]();
   };
 
   async function devices() {
@@ -461,6 +462,35 @@ function meView(root) {
         } }, p.subscribed ? '取消訂閱' : '訂閱'))))));
   }
 
+  // 網頁投稿：沒有裝輸入法也能分享詞庫沒有的詞，算成這個帳號的「網頁」裝置
+  function share() {
+    const text = h('input', { placeholder: '詞，例：國旅券', style: 'width:160px' });
+    const typed = h('input', { class: 'grow bopomofo', placeholder: '你怎麼打這個詞，例：ㄍㄌㄑ 或 ㄍㄨㄛˊㄌㄩˇㄑㄩㄢˋ' });
+    body.replaceChildren(
+      h('p', { class: 'muted', style: 'margin:0' }, '詞庫裡沒有、但你常用的詞。送出後會出現在「待審新詞」，大家投票、編輯審核後收進下一版。'),
+      h('div', { class: 'row' }, text, typed, h('button', { class: 'primary', onclick: async () => {
+        if (await attempt(() => api('/me/submissions', { method: 'POST', body: { text: text.value, typed: typed.value } }),
+          `已分享「${text.value.trim()}」`)) { text.value = ''; typed.value = ''; }
+      } }, '分享')));
+  }
+
+  // 刪除帳號：清空 email 與名稱，投票與回報紀錄保留但不再計入
+  function account() {
+    const password = h('input', { type: 'password', placeholder: '輸入密碼確認', autocomplete: 'current-password' });
+    body.replaceChildren(
+      h('h2', {}, '刪除帳號'),
+      h('p', { class: 'muted', style: 'margin:0' },
+        '刪除後無法復原：email 與顯示名稱會被清空，你的裝置下次同步時會移除個人詞與詞庫包，之後可以綁定到別的帳號。過去的投票與回報紀錄會保留（不顯示你的名字），但票不再計入排序。'),
+      h('div', { class: 'row' }, password, h('button', { class: 'danger', onclick: async () => {
+        if (!confirm('確定要刪除帳號？這個動作無法復原。')) return;
+        if (await attempt(() => api('/me/delete', { method: 'POST', body: { password: password.value } }), '帳號已刪除')) {
+          user = null;
+          location.hash = '#/search';
+          route();
+        }
+      } }, '刪除我的帳號')));
+  }
+
   root.append(h('h1', {}, '我的'), h('p', { class: 'sub' }, `${user.display_name}・${user.email}`),
     h('div', { class: 'stack' }, bar, body));
   draw();
@@ -488,7 +518,7 @@ function reportsView(root) {
         h('td', {}, r.text, h('div', { class: 'bopomofo muted' }, r.bopomofo)),
         h('td', { class: 'nowrap' }, KIND[r.kind], r.open_on_entry > 1 && h('span', { class: 'chip warn', style: 'margin-left:6px' }, `${r.open_on_entry} 人回報`)),
         h('td', { class: 'muted nowrap' }, r.source),
-        h('td', { class: 'muted nowrap' }, status === 'open' ? date(r.created_at) : `${r.status === 'resolved' ? '修正' : '駁回'}・${r.handler}`)))));
+        h('td', { class: 'muted nowrap' }, status === 'open' ? date(r.created_at) : `${r.status === 'resolved' ? '修正' : '駁回'}・${r.handler ?? '已刪除的帳號'}`)))));
   }
 
   async function load() {
@@ -514,7 +544,7 @@ function reportsView(root) {
       h('div', {}, h('div', { class: 'big' }, r.text), h('div', { class: 'bopomofo muted' }, r.bopomofo)),
       h('div', { class: 'row' }, h('span', { class: 'chip warn' }, KIND[r.kind]), h('span', { class: 'chip' }, r.source),
         h('span', { class: 'chip' }, `詞頻 ${fmt(r.frequency)}`)),
-      h('div', { class: 'muted' }, `${r.reporter}・${date(r.created_at)}`),
+      h('div', { class: 'muted' }, `${r.reporter ?? '已刪除的帳號'}・${date(r.created_at)}`),
       r.note && h('div', {}, `「${r.note}」`),
       h('div', {}, h('h2', {}, '回報成立'), h('div', { class: 'stack' },
         h('div', { class: 'row' }, freq, h('button', { onclick: () => resolve('reweight', { new_frequency: Number(freq.value) }) }, '調詞頻')),
@@ -605,6 +635,120 @@ function analyticsView(root) {
               h('td', {}, h('div', { class: 'row' }, meter(r.per_word, max), h('span', { class: 'num' }, r.per_word.toFixed(1)))),
               h('td', { class: 'num' }, fmt(r.unused)), h('td', { class: 'muted' }, r.top.slice(0, 3).map((t) => t.text).join('、')))));
         })));
+}
+
+// ==================== ⑧ 管理 ====================
+
+function adminView(root) {
+  const tabs = { packs: '詞庫包', users: '帳號' };
+  const PACK = { draft: '草稿', published: '上架中', archived: '已下架' };
+  const USER = { active: '正常', suspended: '停權' };
+  let tab = 'packs';
+  const bar = h('div', { class: 'tabs' });
+  const body = h('div');
+
+  const draw = () => {
+    bar.replaceChildren(...Object.entries(tabs).map(([k, v]) =>
+      h('button', { class: k === tab ? 'on' : '', onclick: () => { tab = k; draw(); } }, v)));
+    ({ packs, users })[tab]();
+  };
+
+  async function packs(selected = null) {
+    const { packs: rows } = await api('/admin/packs');
+    const side = h('div', { class: 'side' }, h('div', { class: 'panel empty' }, '選一個詞庫包來編輯內容'));
+    const name = h('input', { placeholder: '名稱，例：台灣地名', maxlength: 30, style: 'width:160px' });
+    const desc = h('input', { class: 'grow', placeholder: '說明（選填）', maxlength: 200 });
+    const setStatus = async (p, status) => {
+      if (await attempt(() => api(`/admin/packs/${p.pack_id}/status`, { method: 'POST', body: { status } }),
+        status === 'published' ? `已上架「${p.name}」` : `已下架「${p.name}」`)) packs(p.pack_id);
+    };
+    const remove = async (p) => {
+      if (!confirm(`刪除草稿詞庫包「${p.name}」？`)) return;
+      if (await attempt(() => api(`/admin/packs/${p.pack_id}`, { method: 'DELETE' }), '已刪除')) packs();
+    };
+    body.replaceChildren(h('div', { class: 'split' }, h('div', { class: 'panel stack' },
+      h('div', { class: 'row' }, name, desc, h('button', { class: 'primary', onclick: async () => {
+        const res = await attempt(() => api('/admin/packs', { method: 'POST', body: { name: name.value, description: desc.value } }),
+          `已建立「${name.value.trim()}」（草稿）`);
+        if (res) packs(res.pack_id);
+      } }, '建立詞庫包')),
+      h('table', {},
+        h('tr', {}, h('th', {}, '詞庫包'), h('th', {}, '狀態'), h('th', { class: 'num' }, '詞條'), h('th', { class: 'num' }, '訂閱'), h('th', {})),
+        rows.map((p) => h('tr', { class: `click ${selected === p.pack_id ? 'sel' : ''}`, onclick: () => { selected = p.pack_id; packs(p.pack_id); } },
+          h('td', {}, h('strong', {}, p.name), h('div', { class: 'muted' }, p.description ?? '')),
+          h('td', {}, h('span', { class: `chip ${p.status === 'published' ? 'ok' : p.status === 'draft' ? 'warn' : ''}` }, PACK[p.status])),
+          h('td', { class: 'num' }, fmt(p.entries)), h('td', { class: 'num' }, fmt(p.subscribers)),
+          h('td', { class: 'num nowrap', onclick: (e) => e.stopPropagation() },
+            p.status !== 'published' && h('button', { class: 'small primary', onclick: () => setStatus(p, 'published') }, '上架'),
+            p.status === 'published' && h('button', { class: 'small', onclick: () => setStatus(p, 'archived') }, '下架'),
+            p.status === 'draft' && h('button', { class: 'small danger', onclick: () => remove(p) }, '刪除')))))), side));
+    const pack = rows.find((p) => p.pack_id === selected);
+    if (pack) editPack(pack, side);
+  }
+
+  async function editPack(pack, side) {
+    const { entries } = await api(`/admin/packs/${pack.pack_id}/entries`);
+    const q = h('input', { class: 'grow', placeholder: '找詞條加進來，例：臺北' });
+    const found = h('div');
+    let timer;
+    q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
+    async function search() {
+      if (!q.value.trim()) return found.replaceChildren();
+      const { results } = await api(`/lexicon?mode=text&q=${encodeURIComponent(q.value.trim())}`);
+      const have = new Set(entries.map((e) => e.entry_id));
+      found.replaceChildren(h('table', {}, results.slice(0, 10).map((r) => h('tr', {},
+        h('td', {}, r.text), h('td', { class: 'bopomofo muted' }, r.bopomofo),
+        h('td', { class: 'num' }, have.has(r.entry_id) ? h('span', { class: 'muted' }, '已在包裡')
+          : h('button', { class: 'small', onclick: async () => {
+            if (await attempt(() => api(`/admin/packs/${pack.pack_id}/entries`, { method: 'POST', body: { entry_id: r.entry_id } }),
+              `已加入「${r.text}」`)) packs(pack.pack_id);
+          } }, '加入'))))));
+    }
+    side.replaceChildren(h('div', { class: 'panel stack' },
+      h('div', { class: 'row' }, h('span', { class: 'big grow' }, pack.name), h('span', { class: 'chip' }, PACK[pack.status])),
+      h('div', { class: 'row' }, q), found,
+      h('h2', {}, `內容（${fmt(entries.length)} 個詞條）`),
+      entries.length === 0 ? h('div', { class: 'empty' }, '還沒有詞條') : h('table', {}, entries.slice(0, 300).map((e) => h('tr', {},
+        h('td', {}, e.text), h('td', { class: 'bopomofo muted' }, e.bopomofo),
+        h('td', {}, e.status !== 'active' && h('span', { class: 'chip warn' }, STATUS[e.status])),
+        h('td', { class: 'num' }, h('button', { class: 'small ghost', onclick: async () => {
+          if (await attempt(() => api(`/admin/packs/${pack.pack_id}/entries/${e.entry_id}`, { method: 'DELETE' }), `已移除「${e.text}」`)) packs(pack.pack_id);
+        } }, '移除')))))));
+  }
+
+  async function users() {
+    const q = h('input', { class: 'grow', placeholder: '依 email 或顯示名稱搜尋；空白顯示投票最多的帳號' });
+    const list = h('div');
+    let timer;
+    q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
+    async function load() {
+      const { users: rows } = await api(`/admin/users?q=${encodeURIComponent(q.value.trim())}`);
+      list.replaceChildren(h('table', {},
+        h('tr', {}, h('th', {}, '帳號'), h('th', {}, '角色'), h('th', {}, '狀態'), h('th', { class: 'num' }, '投票'),
+          h('th', { class: 'num' }, '裝置'), h('th', { class: 'num' }, '回報'), h('th', {})),
+        rows.map((u) => h('tr', {},
+          h('td', {}, h('strong', {}, u.display_name), h('div', { class: 'muted' }, u.email)),
+          h('td', {}, u.role === 'editor' ? '編輯' : '使用者'),
+          h('td', {}, h('span', { class: `chip ${u.status === 'active' ? 'ok' : 'warn'}` }, USER[u.status])),
+          h('td', { class: 'num' }, fmt(u.votes)), h('td', { class: 'num' }, fmt(u.devices)), h('td', { class: 'num' }, fmt(u.reports)),
+          h('td', { class: 'num' }, u.user_id !== user.user_id && h('button', {
+            class: `small ${u.status === 'active' ? 'danger' : ''}`,
+            onclick: async () => {
+              const status = u.status === 'active' ? 'suspended' : 'active';
+              if (await attempt(() => api(`/admin/users/${u.user_id}/status`, { method: 'POST', body: { status } }),
+                status === 'suspended' ? `已停權 ${u.display_name}，他的票不再計入排序` : `已解除 ${u.display_name} 的停權`)) load();
+            },
+          }, u.status === 'active' ? '停權' : '解除停權'))))));
+    }
+    body.replaceChildren(h('div', { class: 'panel stack' },
+      h('p', { class: 'muted', style: 'margin:0' }, '停權的帳號不能登入、投票與回報，已投的票也不計入待審排序。'),
+      h('div', { class: 'row' }, q), list));
+    load();
+  }
+
+  root.append(h('h1', {}, '管理'), h('p', { class: 'sub' }, '整理主題詞庫包，處理洗票或濫用的帳號。'),
+    h('div', { class: 'stack' }, bar, body));
+  draw();
 }
 
 // ==================== 啟動 ====================

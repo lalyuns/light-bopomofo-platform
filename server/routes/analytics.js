@@ -41,11 +41,14 @@ analytics.get('/analytics/backlog', handle(async (req, res) => {
  * 2. 使用次數與票數落差大的詞（PostgreSQL）
  * 把待審詞的使用次數、淨票各自排名成 0–1 的百分位，相減：
  * 正值＝很多人在用卻沒人投票（可能大家不知道有投票功能），負值＝票很多卻少人用（可能被灌票）。
+ * 票數只算 active 帳號（R2）；編輯在「管理」停權洗票帳號後，這裡的結果會跟著變。
  */
 analytics.get('/analytics/gap', handle(async (req, res) => {
   const rows = await query(`
     WITH s AS (SELECT word_id, sum(use_count) AS uses FROM submissions GROUP BY word_id),
-         v AS (SELECT word_id, sum(value) AS net_votes, count(*) AS votes FROM votes GROUP BY word_id),
+         -- 停權、已刪除帳號的票不算（R2），與待審列表的排序一致
+         v AS (SELECT v.word_id, sum(v.value) AS net_votes, count(*) AS votes
+                 FROM votes v JOIN users u USING (user_id) WHERE u.status = 'active' GROUP BY v.word_id),
          x AS (
            SELECT w.text, s.uses, coalesce(v.net_votes, 0) AS net_votes, coalesce(v.votes, 0) AS votes,
                   percent_rank() OVER (ORDER BY s.uses) - percent_rank() OVER (ORDER BY coalesce(v.net_votes, 0)) AS gap

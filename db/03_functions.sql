@@ -47,7 +47,7 @@ RETURNS TABLE (text text, typed text, count integer)
 LANGUAGE sql IMMUTABLE AS $$
   SELECT w.text, w.typed, LEAST(max(w.count), 1000000)
     FROM jsonb_to_recordset(p_words) AS w(text text, typed text, count integer)
-   WHERE w.text ~ '^[㐀-䶿一-鿿豈-﫿𠀀-𲎯]{1,20}$'
+   WHERE w.text ~ '^[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\U00020000-\U000323AF]{1,20}$'
      AND w.typed ~ '^[ㄅ-ㄩˉˊˇˋ˙]{1,60}$'
      AND w.count >= 1
    GROUP BY w.text, w.typed
@@ -202,6 +202,8 @@ BEGIN
   IF p_action NOT IN ('remove', 'reweight') OR (p_action = 'reweight') <> (p_new_frequency IS NOT NULL) THEN
     RAISE EXCEPTION '停用不帶詞頻；調詞頻要帶新詞頻' USING ERRCODE = 'LB004';
   END IF;
+  -- trigger 只在修改者換人時檢查，上次也是自己改的話要在這裡擋
+  PERFORM assert_editor(p_editor, '修改詞條的人');
 
   UPDATE lexicon_entries SET updated_by = p_editor, updated_at = p_at
    WHERE entry_id = p_entry_id AND status = 'active' AND row_version = p_row_version

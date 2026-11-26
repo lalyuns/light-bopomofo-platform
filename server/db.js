@@ -17,6 +17,22 @@ export async function query(text, params = []) {
   return rows;
 }
 
+/** 在同一個交易裡執行 fn(client)；fn 丟出錯誤就整個 ROLLBACK */
+export async function transaction(fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // MongoDB 連不上時不讓整個網站掛掉：紀錄寫不進去就算了，分析頁會顯示錯誤
 const mongoClient = new MongoClient(process.env.MONGO_URL ?? 'mongodb://localhost:27018', {
   serverSelectionTimeoutMS: 3000,

@@ -48,6 +48,9 @@ docker compose up -d --build
 5. **版本**：看 9.0 的變更清單，可以撤回，或按「發布 9.0」。
 6. **查詢詞庫**：再查一次 `ㄍㄌㄑ`，「國旅券」出現了。
 7. **分析**：6 項營運分析，其中 3 項合併了 MongoDB 的選字紀錄與審核歷程。
+8. **管理**：建立「台灣地名」之類的詞庫包、加入詞條、上架或下架；搜尋帳號，停權洗票帳號（他的票立刻不計入待審排序）。
+
+一般使用者在「我的」裡還可以：沒裝輸入法也能用「分享新詞」投稿（算成這個帳號的「網頁」裝置），以及在「帳號」刪除自己的帳號（清空 email 與名稱，投票與回報紀錄保留但不再計入）。
 
 輸入法分享新詞用的 API（格式與輕注音現有的相同）：
 
@@ -56,6 +59,16 @@ curl -X POST http://localhost:3000/api/words -H 'content-type: application/json'
   -d '{"device":"11111111-2222-3333-4444-555555555555","app":"8.0",
        "words":[{"text":"國旅券","typed":"ㄍㄌㄑ","count":3}]}'
 ```
+
+輸入法同步用的 API（裝置要先在「我的裝置」綁定帳號）：
+
+| API | 用途 |
+|---|---|
+| `GET /api/devices/<uuid>/personal-words?since=<時間>` | 取回這個時間之後有變動的個人詞（含刪除標記） |
+| `POST /api/devices/<uuid>/personal-words` | 上傳這台裝置新增或刪除的個人詞：`{"words":[{"text":"周緯倫","bopomofo":"ㄓㄡ ㄨㄟˇ ㄌㄨㄣˊ","status":"active"}]}` |
+| `GET /api/devices/<uuid>/packs` | 下載訂閱中、上架中的詞庫包與它們的詞條 |
+
+停權帳號的裝置不能同步（403）。帳號刪除後，裝置仍可取回刪除標記（回應帶 `account_deleted: true`）和空的詞庫包清單，但不能再上傳；這台裝置可以改綁到別的帳號。
 
 ### 把資料還原成初始狀態
 
@@ -72,7 +85,7 @@ docker compose up -d --build
 |---|---|
 | `db/` | PostgreSQL：16 張資料表與索引、規則檢查（trigger）、交易函式、materialized view |
 | `server/` | 後端：Node.js＋Express，JSON API |
-| `public/` | 前端：一個網頁，登入後依角色顯示 7 個畫面 |
+| `public/` | 前端：一個網頁，登入後依角色顯示 8 個畫面 |
 | `data/` | 資料匯入與生成腳本 |
 | `backup/` | 兩個資料庫的備份（切成 45 MB 一份），第一次啟動時自動還原 |
 | `docker/` | 資料庫第一次啟動時執行的還原腳本 |

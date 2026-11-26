@@ -11,6 +11,7 @@ import { review } from './routes/review.js';
 import { me } from './routes/me.js';
 import { reports } from './routes/reports.js';
 import { analytics } from './routes/analytics.js';
+import { admin } from './routes/admin.js';
 import { errorHandler } from './errors.js';
 import { pool } from './db.js';
 
@@ -24,7 +25,7 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', maxAge: 7 * 24 * 3600 * 1000 },
 }));
 
-app.use('/api', account, input, lexicon, candidates, me, reports, analytics);
+app.use('/api', account, input, lexicon, candidates, me, reports, analytics, admin);
 app.use('/api', review);  // 以下全部需要編輯身分
 app.use('/api', (req, res) => res.status(404).json({ error: '沒有這個 API' }));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
