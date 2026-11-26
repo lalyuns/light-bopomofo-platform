@@ -19,10 +19,12 @@
   <dialog id="login">
     <form method="dialog" class="login">
       <h2>登入</h2>
-      <label>Email<input name="email" type="email" required autocomplete="username"></label>
+      <label>Email<input name="email" type="email" required maxlength="254" autocomplete="username"></label>
+      <label hidden>顯示名稱（選填，最多 30 字）<input name="display_name" maxlength="30" autocomplete="nickname"></label>
       <label>密碼<input name="password" type="password" required autocomplete="current-password"></label>
       <p class="error" hidden></p>
       <div class="row end">
+        <button type="button" value="switch" class="ghost grow" style="text-align:left">註冊新帳號</button>
         <button type="button" value="cancel" class="ghost">取消</button>
         <button type="submit" class="primary">登入</button>
       </div>

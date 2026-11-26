@@ -99,10 +99,25 @@ review.post('/lexicon/:entryId/change', handle(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// 新增讀音（或詞庫沒有的詞）：建立草稿中的詞條，占一個新詞名額。詞頻沒填用 1000
 review.post('/lexicon', handle(async (req, res) => {
-  const { text, bopomofo, frequency } = req.body;
+  const text = String(req.body.text ?? '').trim();
+  const bopomofo = String(req.body.bopomofo ?? '').trim().replace(/\s+/g, ' ');
+  const given = req.body.frequency;
+  const frequency = given == null || given === '' ? 1000 : Number(given);
+  if (!/^[ㄅ-ㄩˊˇˋ˙]+( [ㄅ-ㄩˊˇˋ˙]+)*$/.test(bopomofo) || bopomofo.length > 100) {
+    throw new HttpError(400, '讀音要用注音符號與聲調，音節之間空一格');
+  }
+  if (!Number.isInteger(frequency) || frequency < 0 || frequency > 2147483647) {
+    throw new HttpError(400, '詞頻要是 0 以上的整數');
+  }
+  // 同一詞的同一讀音只有一筆（R13），先查是為了給看得懂的訊息；同時新增仍由 UNIQUE 擋下
+  const existing = await one(
+    `SELECT 1 FROM lexicon_entries e JOIN words w USING (word_id) WHERE w.text = $1 AND e.bopomofo = $2`,
+    [text, bopomofo]);
+  if (existing) throw new HttpError(409, '這個讀音已經有詞條了（可能在草稿中或已停用）');
   const { add_entry: entryId } = await one('SELECT add_entry($1, $2, $3, $4)',
-    [text, String(bopomofo ?? '').trim().replace(/\s+/g, ' '), Number(frequency) || 1000, req.user.user_id]);
+    [text, bopomofo, frequency, req.user.user_id]);
   res.json({ entry_id: entryId });
 }));
 

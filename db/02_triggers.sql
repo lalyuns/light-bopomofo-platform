@@ -128,7 +128,12 @@ BEGIN
     END IF;
   END IF;
 
-  PERFORM assert_editor(NEW.updated_by, '修改詞條的人');
+  -- 只在記下新的修改者時檢查。publish_release 套用變更時不換修改者；
+  -- 如果每次更新都檢查，改過詞條的編輯後來被停權或刪除帳號，整個草稿版本就發布不了。
+  -- 同一位編輯再改一次由 change_entry 檢查。
+  IF TG_OP = 'INSERT' OR NEW.updated_by IS DISTINCT FROM OLD.updated_by THEN
+    PERFORM assert_editor(NEW.updated_by, '修改詞條的人');
+  END IF;
   RETURN NEW;
 END $$;
 
@@ -277,7 +282,10 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  PERFORM assert_editor(NEW.owner_id, '詞庫包的建立者');
+  -- 只在建立或換建立者時檢查：建立者離職後，其他編輯仍要能上架、下架
+  IF TG_OP = 'INSERT' OR NEW.owner_id <> OLD.owner_id THEN
+    PERFORM assert_editor(NEW.owner_id, '詞庫包的建立者');
+  END IF;
   IF TG_OP = 'INSERT' AND NEW.status <> 'draft' THEN
     RAISE EXCEPTION '新詞庫包必須是草稿' USING ERRCODE = 'check_violation';
   END IF;

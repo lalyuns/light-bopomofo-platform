@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- 共用的格式檢查
 -- 一個漢字：基本區、擴充 A、相容區、擴充 B 以後
 CREATE DOMAIN han_text AS varchar(20)
-  CHECK (VALUE ~ '^[㐀-䶿一-鿿豈-﫿𠀀-𲎯]+$');
+  CHECK (VALUE ~ '^[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\U00020000-\U000323AF]+$');
 -- 完整讀音：音節以空格分隔，例「ㄍㄨㄛˊ ㄌㄩˇ ㄑㄩㄢˋ」
 CREATE DOMAIN bopomofo_text AS varchar(100)
   CHECK (VALUE ~ '^[ㄅ-ㄩˊˇˋ˙]+( [ㄅ-ㄩˊˇˋ˙]+)*$');
